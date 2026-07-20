@@ -1,0 +1,27 @@
+server:
+  addr: ":8080"
+  read_timeout: 60s
+  idle_timeout: 120s
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+
+dashscope:
+  # Override at runtime with DASHSCOPE_API_KEY env var
+  api_key: ""
+  base_url: "https://dashscope.aliyuncs.com"
+  model: "qwen-image-edit"
+  timeout: 90s
+
+cors:
+  allowed_origins:
+    - "http://localhost:5173"
+    - "http://localhost:4173"
+    - "https://stylemirror.localhost"
+
+limits:
+  requests_per_hour: 20
+  estimated_seconds: 15
+  max_upload_bytes: 5242880  # 5 MiB
