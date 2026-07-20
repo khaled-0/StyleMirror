@@ -42,7 +42,7 @@ By leveraging Qwen Team's `qwen-image-edit` model via a single synchronous HTTPS
    git clone https://github.com/yourusername/stylemirror.git
    cd stylemirror
    ```
-````
+
 
 2. **Configure environment:**
 
@@ -87,20 +87,54 @@ By leveraging Qwen Team's `qwen-image-edit` model via a single synchronous HTTPS
 
 ---
 
-## 🧪 Testing the Userscript
+🧪 Testing the Userscript
 
-The Tampermonkey userscript allows you to inject the StyleMirror try-on modal into any live e-commerce site.
+Ensure the SvelteKit frontend is running (npm run dev).
+Install the Tampermonkey browser extension.
+Open the Tampermonkey dashboard and click Create a new script.
+Delete the template and paste the StyleMirror Loader script:
 
-1. Install the [Tampermonkey](https://www.tampermonkey.net/) browser extension.
-2. Open the Tampermonkey dashboard and click **Create a new script**.
-3. Delete the template and paste the entire contents of `userscript/stylemirror.user.js`.
-4. Save the script (Ctrl+S).
-5. Visit any e-commerce site with product images (e.g., an Unsplash search page).
-6. Click the floating "Try It On" button in the bottom right corner.
+```
+// ==UserScript==
+// @name         StyleMirror — Loader
+// @namespace    https://stylemirror.local
+// @version      1.0
+// @description  Loads the StyleMirror injector from the dev server.
+// @author       BSc Thesis — Uttara University
+// @match        *://www.aarong.com/*
+// @grant        GM_xmlhttpRequest
+// @run-at       document-idle
+// ==/UserScript==
+(function() {
+    'use strict';
 
-_(Note: If your Go API is not running on `localhost:8080`, update the `API_BASE` variable at the top of the userscript)._
+    // Change this if your SvelteKit server is on a different port
+    const scriptUrl = 'http://localhost:5173/sdk/stylemirror.js';
 
----
+    GM_xmlhttpRequest({
+        method: "GET",
+        url: scriptUrl,
+        onload: function(response) {
+            if (response.status === 200) {
+                // Inject the fetched code directly into the page context
+                const script = document.createElement('script');
+                script.textContent = response.responseText;
+                (document.head || document.documentElement).appendChild(script);
+                // Remove it immediately so it doesn't clutter the DOM
+                script.remove();
+            } else {
+                console.warn(`[StyleMirror Loader] Failed to load script (Status: ${response.status}). Is SvelteKit running?`);
+            }
+        },
+        onerror: function() {
+            console.warn('[StyleMirror Loader] Network error. Is SvelteKit running on http://localhost:5173?');
+        }
+    });
+})();
+```
+
+Save the script (Ctrl+S).
+Visit any e-commerce site (or an Unsplash search page). The floating "Try It On" bar will appear, and overlay buttons will appear on product images.
 
 ## 📄 License
 

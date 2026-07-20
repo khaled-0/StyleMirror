@@ -17,6 +17,7 @@ dashscope:
 
 cors:
   allowed_origins:
+    - "https://www.aarong.com"
     - "http://localhost:5173"
     - "http://localhost:4173"
     - "https://stylemirror.localhost"
