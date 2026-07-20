@@ -59,7 +59,7 @@ func loadConfig(path string) (*Config, error) {
 		c.Redis.Addr = a
 	}
 	if c.DashScope.BaseURL == "" {
-		c.DashScope.BaseURL = "https://dashscope.aliyuncs.com"
+		c.DashScope.BaseURL = "https://dashscope-intl.aliyuncs.com"
 	}
 	if c.DashScope.Model == "" {
 		c.DashScope.Model = "qwen-image-edit"

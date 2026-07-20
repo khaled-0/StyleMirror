@@ -225,10 +225,6 @@
                     beforeLabel="You"
                     afterLabel="Try-On"
                 />
-                <button
-                    class="w-full mt-4 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 text-white font-bold text-sm hover:shadow-lg hover:shadow-violet-500/30 transition-all"
-                    on:click={generate}>↻ Try Another Garment</button
-                >
             </div>
         {:else if $tryOnState === "error"}
             <div
@@ -245,11 +241,11 @@
             </div>
         {/if}
 
-        {#if $tryOnState === "idle" || $tryOnState === "done" || $tryOnState === "error"}
+        {#if $tryOnState === "idle" || $tryOnState === "done" }
             <button
                 class="w-full max-w-[400px] mt-4 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 text-white font-bold text-sm disabled:opacity-30 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-violet-500/30 transition-all"
                 disabled={!$bodyImageURL}
-                on:click={generate}
+                on:click={ $tryOnState === "done" ? resetTryOn: generate}
             >
                 {$tryOnState === "done"
                     ? "↻ Try Another Garment"

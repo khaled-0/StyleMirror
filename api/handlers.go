@@ -37,7 +37,7 @@ func (s *Service) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req SubmitRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, s.Cfg.Limits.MaxUploadBytes)).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json: " + err.Error()})
 		return
 	}

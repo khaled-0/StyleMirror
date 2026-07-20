@@ -11,7 +11,7 @@ redis:
 dashscope:
   # Override at runtime with DASHSCOPE_API_KEY env var
   api_key: ""
-  base_url: "https://dashscope.aliyuncs.com"
+  base_url: "https://dashscope-intl.aliyuncs.com"
   model: "qwen-image-edit"
   timeout: 90s
 
@@ -24,4 +24,4 @@ cors:
 limits:
   requests_per_hour: 20
   estimated_seconds: 15
-  max_upload_bytes: 5242880  # 5 MiB
+  max_upload_bytes: 15728640  # 15 MiB

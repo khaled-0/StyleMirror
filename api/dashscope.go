@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,12 +14,6 @@ import (
 )
 
 // DashScopeClient calls Qwen-Image-Edit synchronously over HTTPS.
-// No SDK, no polling of DashScope's own task system — one POST, one JSON response.
-//
-// API reference: https://help.aliyun.com/zh/model-studio/qwen-image-edit
-//
-// The request shape below matches the documented multi-image input format.
-// If Aliyun changes the schema, this is the single file to update.
 type DashScopeClient struct {
 	apiKey  string
 	baseURL string
@@ -37,13 +32,23 @@ func NewDashScopeClient(cfg *Config) *DashScopeClient {
 	}
 }
 
+type dsContent struct {
+	Image string `json:"image,omitempty"`
+	Text  string `json:"text,omitempty"`
+}
+
+type dsMessage struct {
+	Role    string      `json:"role"`
+	Content []dsContent `json:"content"`
+}
+
 type dsInput struct {
-	GarmentURL string `json:"garment_url"`
-	BodyURL    string `json:"body_url"`
+	Messages []dsMessage `json:"messages"`
 }
 
 type dsParameters struct {
-	Prompt string `json:"prompt,omitempty"`
+	NegativePrompt string `json:"negative_prompt,omitempty"`
+	Watermark      bool   `json:"watermark"`
 }
 
 type dsRequest struct {
@@ -52,18 +57,68 @@ type dsRequest struct {
 	Parameters dsParameters `json:"parameters"`
 }
 
-type dsOutput struct {
-	ResultURL  string `json:"result_url"`
-	URL        string `json:"url"`
-	TaskID     string `json:"task_id"`
-	TaskStatus string `json:"task_status"`
+type dsResponseChoice struct {
+	Message struct {
+		Content []struct {
+			Image string `json:"image"`
+		} `json:"content"`
+	} `json:"message"`
+	FinishReason string `json:"finish_reason"`
 }
 
 type dsResponse struct {
-	Output    dsOutput `json:"output"`
-	RequestID string   `json:"request_id"`
-	Code      string   `json:"code,omitempty"`
-	Message   string   `json:"message,omitempty"`
+	Output struct {
+		Choices   []dsResponseChoice `json:"choices"`
+		ResultURL string             `json:"result_url"`
+		URL       string             `json:"url"`
+	} `json:"output"`
+	RequestID string `json:"request_id"`
+	Code      string `json:"code,omitempty"`
+	Message   string `json:"message,omitempty"`
+}
+
+// prepareImage ensures the image is a fully qualified Data URI (data:image/...;base64,...)
+func (c *DashScopeClient) prepareImage(imageRef string) (string, error) {
+	// If it's already a data URI, return it as-is
+	if strings.HasPrefix(imageRef, "data:image/") {
+		return imageRef, nil
+	}
+
+	// If it's a URL, download it and convert to Data URI
+	if strings.HasPrefix(imageRef, "http://") || strings.HasPrefix(imageRef, "https://") {
+		req, err := http.NewRequest(http.MethodGet, imageRef, nil)
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("User-Agent", "StyleMirrorBot/1.0")
+
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("failed to download image: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("failed to download image: status %d", resp.StatusCode)
+		}
+
+		imgData, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+		if err != nil {
+			return "", fmt.Errorf("failed to read image data: %w", err)
+		}
+
+		// Detect content type from headers, fallback to jpeg
+		contentType := resp.Header.Get("Content-Type")
+		if contentType == "" || !strings.HasPrefix(contentType, "image/") {
+			contentType = "image/jpeg"
+		}
+
+		encoded := base64.StdEncoding.EncodeToString(imgData)
+		return fmt.Sprintf("data:%s;base64,%s", contentType, encoded), nil
+	}
+
+	// Fallback: if it's raw base64, wrap it in a data URI
+	return "data:image/jpeg;base64," + imageRef, nil
 }
 
 func (c *DashScopeClient) Edit(ctx context.Context, garmentURL, bodyURL, prompt string) (string, error) {
@@ -71,22 +126,46 @@ func (c *DashScopeClient) Edit(ctx context.Context, garmentURL, bodyURL, prompt 
 		return "", errors.New("dashscope api key not configured")
 	}
 
-	prompt = strings.TrimSpace(prompt)
-	if prompt == "" {
-		prompt = "Virtual try-on: dress the person in the provided garment. Preserve identity, pose, and lighting."
+	garmentDataURI, err := c.prepareImage(garmentURL)
+	if err != nil {
+		return "", fmt.Errorf("garment image processing failed: %w", err)
 	}
 
-	body := dsRequest{
-		Model:      c.model,
-		Input:      dsInput{GarmentURL: garmentURL, BodyURL: bodyURL},
-		Parameters: dsParameters{Prompt: prompt},
+	bodyDataURI, err := c.prepareImage(bodyURL)
+	if err != nil {
+		return "", fmt.Errorf("body image processing failed: %w", err)
 	}
+
+	prompt = strings.TrimSpace(prompt)
+	// if prompt == "" {
+	prompt = "Transfer the garment from image 1 onto the person in image 2. Keep the person's original pose, face, hair, body shape, and background exactly the same. Only change the dress."
+	// }
+
+	body := dsRequest{
+		Model: c.model,
+		Input: dsInput{
+			Messages: []dsMessage{
+				{
+					Role: "user",
+					Content: []dsContent{
+						{Image: garmentDataURI}, // Image 1
+						{Image: bodyDataURI},    // Image 2
+						{Text: prompt},
+					},
+				},
+			},
+		},
+		Parameters: dsParameters{
+			Watermark: false,
+		},
+	}
+
 	b, err := json.Marshal(body)
 	if err != nil {
 		return "", err
 	}
 
-	url := c.baseURL + "/api/v1/services/aigc/image-generation/generation"
+	url := c.baseURL + "/api/v1/services/aigc/multimodal-generation/generation"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return "", err
@@ -113,12 +192,20 @@ func (c *DashScopeClient) Edit(ctx context.Context, garmentURL, bodyURL, prompt 
 		return "", fmt.Errorf("dashscope error %s: %s", out.Code, out.Message)
 	}
 
-	resultURL := out.Output.ResultURL
-	if resultURL == "" {
-		resultURL = out.Output.URL
+	if len(out.Output.Choices) > 0 && len(out.Output.Choices[0].Message.Content) > 0 {
+		for _, content := range out.Output.Choices[0].Message.Content {
+			if content.Image != "" {
+				return content.Image, nil
+			}
+		}
 	}
-	if resultURL == "" {
-		return "", errors.New("dashscope returned empty result url")
+
+	if out.Output.ResultURL != "" {
+		return out.Output.ResultURL, nil
 	}
-	return resultURL, nil
+	if out.Output.URL != "" {
+		return out.Output.URL, nil
+	}
+
+	return "", errors.New("dashscope returned empty result url")
 }
