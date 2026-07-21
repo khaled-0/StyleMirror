@@ -63,17 +63,6 @@ export async function getUsage(): Promise<Usage> {
   return resp.json();
 }
 
-export async function uploadImage(file: File): Promise<string> {
-  const form = new FormData();
-  form.append('file', file);
-  const resp = await fetch(`${API_BASE}/api/upload`, {
-    method: 'POST',
-    headers: { 'X-Client-Id': getClientId() },
-    body: form,
-  });
-  if (!resp.ok) throw new Error('Upload failed');
-  const data = await resp.json();
-  return data.url;
-}
+
 
 export { API_BASE };

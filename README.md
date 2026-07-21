@@ -94,42 +94,55 @@ Install the Tampermonkey browser extension.
 Open the Tampermonkey dashboard and click Create a new script.
 Delete the template and paste the StyleMirror Loader script:
 
-```
+```js
 // ==UserScript==
 // @name         StyleMirror — Loader
 // @namespace    https://stylemirror.local
-// @version      1.0
+// @version      1.1
 // @description  Loads the StyleMirror injector from the dev server.
-// @author       BSc Thesis — Uttara University
+// @author       khaled-0 — Uttara University
 // @match        *://www.aarong.com/*
-// @grant        GM_xmlhttpRequest
+// @grant        none
 // @run-at       document-idle
 // ==/UserScript==
-(function() {
-    'use strict';
 
-    // Change this if your SvelteKit server is on a different port
-    const scriptUrl = 'http://localhost:5173/sdk/stylemirror.js';
+(function () {
+  'use strict';
 
-    GM_xmlhttpRequest({
-        method: "GET",
-        url: scriptUrl,
-        onload: function(response) {
-            if (response.status === 200) {
-                // Inject the fetched code directly into the page context
-                const script = document.createElement('script');
-                script.textContent = response.responseText;
-                (document.head || document.documentElement).appendChild(script);
-                // Remove it immediately so it doesn't clutter the DOM
-                script.remove();
-            } else {
-                console.warn(`[StyleMirror Loader] Failed to load script (Status: ${response.status}). Is SvelteKit running?`);
-            }
-        },
-        onerror: function() {
-            console.warn('[StyleMirror Loader] Network error. Is SvelteKit running on http://localhost:5173?');
-        }
-    });
+  // 1) Set config BEFORE stylemirror.js runs. The widget reads
+  //    window.StyleMirrorConfig once, at load time.
+  window.StyleMirrorConfig = {
+    apiBase: 'http://localhost:8080',
+
+    // The injector will look for exact matches of this selector.
+    // No demo mode, no image size detection — if it matches, the "Try It On" button appears.
+    imageSelector: 'img[data-nimg="1"]',
+
+    // Skip thumbnail rails / swatches / recommendation carousels so the
+    // "Try It On" button only shows up on the real product shot.
+    excludeSelector: '.w-5, img[alt="GooglePlay"], img[alt="AppStore"]'
+  };
+
+  // 2) Load the widget dynamically from the dev server.
+  //    (Alternatively, you can bundle it inline using @require in the header)
+  const script = document.createElement('script');
+  script.src = 'http://localhost:5173/sdk/stylemirror.js';
+  script.onload = () => {
+    console.log('[StyleMirror] loaded with config:', window.StyleMirror.getConfig());
+  };
+  document.documentElement.appendChild(script);
+
+  // 3) You can also reconfigure at any time later — e.g. if the page is a
+  //    SPA and the product selector needs to change on client-side navigation:
+  //
+  //    window.StyleMirror.configure({ imageSelector: '.new-gallery img' });
+  //
+  // Useful hooks exposed on window.StyleMirror:
+  //   .configure(partialConfig)  merge + immediately rescan the page
+  //   .getConfig()               read the active config
+  //   .rescan()                  force a rescan without changing config
+  //   .open(productIndex?)       open the modal programmatically
+  //   .close()                   close the modal programmatically
 })();
 ```
 

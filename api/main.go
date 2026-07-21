@@ -135,8 +135,6 @@ func main() {
 		r.Post("/tryon", svc.handleSubmit)
 		r.Get("/tryon/{id}", svc.handleStatus)
 		r.Get("/usage", svc.handleUsage)
-		r.Post("/upload", svc.handleUpload)
-		r.Get("/uploads/{id}", svc.serveUpload)
 	})
 
 	srv := &http.Server{

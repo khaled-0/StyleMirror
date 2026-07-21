@@ -12,6 +12,9 @@ dashscope:
   # Override at runtime with DASHSCOPE_API_KEY env var
   api_key: ""
   base_url: "https://dashscope-intl.aliyuncs.com"
+  # model: "qwen-image-edit-plus-2025-12-15"
+  # model: "qwen-image-edit-plus-2025-10-30"
+  # model: "qwen-image-edit-plus"
   model: "qwen-image-edit"
   timeout: 90s
 

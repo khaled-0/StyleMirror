@@ -1,6 +1,5 @@
 <script lang="ts">
   import SilhouetteCanvas from '$lib/components/SilhouetteCanvas.svelte';
-  import MirrorPanel from '$lib/components/MirrorPanel.svelte';
   import MagicSlider from '$lib/components/MagicSlider.svelte';
 
   // Preview state
@@ -52,37 +51,35 @@
     </div>
 
     <!-- Live Preview Panel -->
-    <div class="hidden md:block">
-      <MirrorPanel class="p-6">
+    <div class="p-6 mirror-surface">
         <div class="text-center">
-          <div class="text-xs text-violet-300/40 uppercase tracking-wider mb-4 flex items-center justify-center gap-2">
+            <div class="text-xs text-violet-300/40 uppercase tracking-wider mb-4 flex items-center justify-center gap-2">
             <span>✨ Interactive Magic Preview</span>
-          </div>
+            </div>
 
-          <!-- Magic Slider Container -->
-          <div class="relative aspect-[4/5] rounded-xl bg-ink-950/60 border border-white/5 overflow-hidden">
+            <!-- Magic Slider Container -->
+            <div class="relative aspect-[6/7] rounded-xl bg-ink-950/60 border border-white/5 overflow-hidden">
             <MagicSlider beforeSrc={baseModel} afterSrc={previewGarments[selectedPreview].url} />
-          </div>
+            </div>
 
-          <!-- Garment Selection Row -->
-          <div class="mt-4 flex items-center justify-center gap-3">
+            <!-- Garment Selection Row -->
+            <div class="mt-4 flex items-center justify-center gap-3">
             <span class="text-xs text-violet-300/40 mr-2">Select Garment:</span>
             {#each previewGarments as g, i}
-              <button
+                <button
                 class="w-24 h-24 rounded-lg overflow-hidden border-2 transition-all hover:scale-105 {selectedPreview === i ? 'border-violet-400 ring-2 ring-violet-400/30' : 'border-transparent'}"
                 on:click={() => selectedPreview = i}
                 aria-label="Select {g.name}"
-              >
+                >
                 <img src={g.garment} alt={g.name} class="w-full h-full object-cover" />
-              </button>
+                </button>
             {/each}
-          </div>
+            </div>
 
-          <div class="mt-3 text-xs text-violet-300/40 pointer-events-none">
+            <div class="mt-3 text-xs text-violet-300/40 pointer-events-none">
             Drag the slider to reveal the magic →
-          </div>
+            </div>
         </div>
-      </MirrorPanel>
     </div>
   </div>
 </section>
@@ -102,12 +99,12 @@
         { n: '02', title: 'API + Inference', desc: 'Go + chi. Validates, calls DashScope Qwen-Image-Edit synchronously over HTTPS, returns. Redis is a status store, not a queue.', icon: '⚙️' },
         { n: '03', title: 'Frontend', desc: 'SvelteKit + Tailwind. Landing page, embedded live demo, and a partner dashboard. Mirror-motif throughout.', icon: '✨' },
       ] as f}
-        <MirrorPanel class="p-6">
+        <div class="p-6 mirror-surface">
           <div class="text-3xl mb-4">{f.icon}</div>
           <div class="text-xs text-violet-400 font-mono mb-2">{f.n}</div>
           <h3 class="font-display text-xl font-700 mb-2">{f.title}</h3>
           <p class="text-sm text-violet-300/50 leading-relaxed">{f.desc}</p>
-        </MirrorPanel>
+        </div>
       {/each}
     </div>
   </div>
@@ -127,5 +124,5 @@
 </section>
 
 <footer class="py-12 px-6 border-t border-white/5 text-center text-sm text-violet-300/30">
-  StyleMirror · BSc Computer Science Thesis · Uttara University
+  StyleMirror · Khaled · Uttara University
 </footer>

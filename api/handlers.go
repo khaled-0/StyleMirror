@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -155,72 +154,6 @@ func (s *Service) handleUsage(w http.ResponseWriter, r *http.Request) {
 		ClientID: cid, Used: count, Limit: s.Cfg.Limits.RequestsPerHour,
 		WindowSec: 3600, ResetAtUnix: time.Now().Add(ttl).Unix(),
 	})
-}
-
-func (s *Service) handleUpload(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, s.Cfg.Limits.MaxUploadBytes)
-	if err := r.ParseMultipartForm(s.Cfg.Limits.MaxUploadBytes); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "upload too large or malformed"})
-		return
-	}
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing 'file' field"})
-		return
-	}
-	defer file.Close()
-
-	ct := header.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "image/") {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "file must be an image"})
-		return
-	}
-	data, err := io.ReadAll(io.LimitReader(file, s.Cfg.Limits.MaxUploadBytes))
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "read failed"})
-		return
-	}
-
-	id := newTaskID()
-	if err := s.Store.SaveUpload(r.Context(), id, ct, data); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "store failed"})
-		return
-	}
-
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	// Forward X-Forwarded-Proto if behind a proxy
-	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
-		scheme = p
-	}
-	uploadURL := scheme + "://" + r.Host + "/api/uploads/" + id
-
-	writeJSON(w, http.StatusOK, UploadResponse{
-		URL: uploadURL, SizeBytes: int64(len(data)), ExpiresIn: 600,
-	})
-}
-
-func (s *Service) serveUpload(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	dataURI, ct, err := s.Store.GetUpload(r.Context(), id)
-	if err != nil || dataURI == "" {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "upload not found or expired"})
-		return
-	}
-	// Strip data URI prefix
-	parts := strings.SplitN(dataURI, ",", 2)
-	if len(parts) != 2 {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "corrupt upload"})
-		return
-	}
-	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Cache-Control", "private, max-age=600")
-	_, _ = w.Write([]byte(parts[1])) // already base64 — but we need raw bytes
-	// Actually decode base64:
-	// For simplicity in thesis demo, redirect to the data URI.
-	// In production you'd decode and write raw bytes.
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

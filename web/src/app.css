@@ -17,30 +17,133 @@ body {
 /* Mirror glass surface */
 .mirror-surface {
   position: relative;
-  background: linear-gradient(145deg, rgba(28,24,40,0.85), rgba(20,18,28,0.95));
+  background: linear-gradient(
+    145deg,
+    rgba(28,24,40,0.85),
+    rgba(20,18,28,0.95)
+  );
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 24px 80px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+
+  box-shadow:
+    0 24px 80px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+
+  isolation: isolate;
 }
+
+
+/* Moving glass reflection */
 .mirror-surface::before {
   content: '';
-  position: absolute; inset: 0;
-  background: var(--mirror-sheen);
-  background-size: 200% 200%;
-  animation: sheenSweep 4s ease-in-out infinite;
+  position: absolute;
+  inset: -50%;
+
+  background:
+    linear-gradient(
+      120deg,
+      transparent 30%,
+      rgba(255,255,255,0.04) 42%,
+      rgba(255,255,255,0.12) 50%,
+      rgba(255,255,255,0.04) 58%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse at center,
+      rgba(167,139,250,0.12),
+      transparent 55%
+    );
+
+  background-size:
+    200% 200%,
+    150% 150%;
+
+  filter: blur(12px);
+
+  animation:
+    mirrorSweep 8s cubic-bezier(.4,0,.2,1) infinite,
+    mirrorGlow 5s ease-in-out infinite;
+
   pointer-events: none;
 }
-@keyframes sheenSweep {
-  0% { background-position: 200% 200%; }
-  100% { background-position: -100% -100%; }
-}
+
+
+/* Soft moving highlight */
 .mirror-surface::after {
   content: '';
-  position: absolute; inset: 0;
-  background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(167,139,250,0.06), transparent 60%);
+  position: absolute;
+  inset: 0;
+
+  background:
+    radial-gradient(
+      circle at var(--mx,50%) var(--my,50%),
+      rgba(167,139,250,0.12),
+      transparent 55%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(255,255,255,0.03),
+      transparent 40%
+    );
+
+  mix-blend-mode: screen;
+
+  opacity: 0.8;
+
+  animation: mirrorBreath 6s ease-in-out infinite;
+
   pointer-events: none;
-  transition: opacity 0.3s;
+
+  transition:
+    opacity .4s ease,
+    background-position .4s ease;
+}
+
+
+/* Reflection travelling across glass */
+@keyframes mirrorSweep {
+  0% {
+    transform: translate(-35%, -35%) rotate(0deg);
+    opacity: .25;
+  }
+
+  35% {
+    opacity: .8;
+  }
+
+  65% {
+    opacity: .45;
+  }
+
+  100% {
+    transform: translate(35%, 35%) rotate(8deg);
+    opacity: .25;
+  }
+}
+
+
+/* Slow metallic shimmer */
+@keyframes mirrorGlow {
+  0%,100% {
+    filter: blur(14px);
+  }
+
+  50% {
+    filter: blur(22px);
+  }
+}
+
+
+/* Glass breathing effect */
+@keyframes mirrorBreath {
+  0%,100% {
+    opacity: .55;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 /* Chromatic edge */
