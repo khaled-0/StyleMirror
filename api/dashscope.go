@@ -136,10 +136,12 @@ func (c *DashScopeClient) Edit(ctx context.Context, garmentURL, bodyURL, prompt 
 		return "", fmt.Errorf("body image processing failed: %w", err)
 	}
 
-	prompt = strings.TrimSpace(prompt)
-	// if prompt == "" {
-	prompt = "Transfer the garment from image 1 onto the person in image 2. Keep the person's original pose, face, hair, body shape, and background exactly the same. Only change the dress."
-	// }
+	prompt = "Image 1 contains a garment (it may be worn by a person or displayed alone). " +
+		"Image 2 contains the target person. " +
+		"Transfer ONLY the garment from Image 1 onto the person in Image 2. " +
+		"Completely ignore the face, body, and identity of any person in Image 1. " +
+		"Keep the person in Image 2 exactly the same (original pose, face, hair, body shape, and background). " +
+		"Only change the outfit of the person in Image 2."
 
 	body := dsRequest{
 		Model: c.model,

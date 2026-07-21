@@ -185,3 +185,27 @@ func (s *Service) handleAdminDeletePartner(w http.ResponseWriter, r *http.Reques
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
+
+func (s *Service) handleAdminGetUsageLogs(w http.ResponseWriter, r *http.Request) {
+	logs, err := s.Store.GetUsageLogs(r.Context(), 50) // Get last 50 logs
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to fetch logs"})
+		return
+	}
+	writeJSON(w, http.StatusOK, logs)
+}
+
+func (s *Service) handlePartnerLogs(w http.ResponseWriter, r *http.Request) {
+	partner := partnerFromCtx(r.Context())
+	if partner == nil {
+		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	logs, err := s.Store.GetPartnerUsageLogs(r.Context(), partner.ID, 20) // Get last 20 logs
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to fetch logs"})
+		return
+	}
+	writeJSON(w, http.StatusOK, logs)
+}

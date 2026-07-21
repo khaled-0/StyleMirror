@@ -12,13 +12,11 @@ dashscope:
   base_url: "https://dashscope-intl.aliyuncs.com"
   # model: "qwen-image-edit-plus-2025-12-15"
   # model: "qwen-image-edit-plus-2025-10-30"
-  # model: "qwen-image-edit-plus"
-  model: "qwen-image-edit"
+  model: "qwen-image-edit-plus"
   timeout: 90s
 
 cors:
   allowed_origins:
-    - "https://www.aarong.com"
     - "http://localhost:5173"
     - "http://localhost:4173"
     - "https://stylemirror.localhost"

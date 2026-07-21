@@ -79,9 +79,9 @@
   const overlayStyleEl = document.createElement('style');
   overlayStyleEl.textContent = `
     .sm-overlay-btn {
-      position: absolute; top: 10px; right: 10px; z-index: 2147483646;
+      position: absolute; top: 10px; left: 10px; z-index: 2147483646;
       width: 34px; height: 34px; padding: 0;
-      background: transparent;
+      background: #100000;
       border: 1px solid rgba(255,255,255,0.4);
       color: rgba(255,255,255,0.9);
       backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px);
@@ -570,7 +570,7 @@
       if (!state.taskID) return;
       if (Date.now() - start > MAX_POLL_MS) { state.status = 'error'; state.error = 'Timed out.'; renderModalBody(); return; }
       try {
-        const resp = await fetch(`${apiBase()}/api/tryon/${state.taskID}`, { headers: { 'X-Api-Id': getClientId() }, signal: localAbort ? localAbort.signal : undefined });
+        const resp = await fetch(`${apiBase()}/api/tryon/${state.taskID}`, { headers: { 'X-Api-Key': CONFIG.apiKey }, signal: localAbort ? localAbort.signal : undefined });
         const data = await resp.json();
         state.progress = Math.min(95, ((Date.now() - start) / 1000 / ESTIMATED_SEC) * 100);
         if (data.status === 'succeeded') { state.status = 'done'; state.resultURL = data.result_url; renderModalBody(); return; }

@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS partners (
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
-    id VARCHAR(32) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     partner_id UUID REFERENCES partners(id) ON DELETE CASCADE,
     status VARCHAR(32) NOT NULL,
     result_url TEXT,

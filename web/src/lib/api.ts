@@ -89,3 +89,23 @@ export function logout(isAdmin: boolean = false) {
   }
   window.location.reload();
 }
+
+export interface UsageLog {
+  partner_name: string;
+  task_id: string;
+  task_status: string;
+  created_at: string;
+}
+
+export async function getUsageLogs(): Promise<UsageLog[]> {
+  const resp = await fetch(`${API_BASE}/api/admin/logs`, { headers: getHeaders(true) });
+  if (!resp.ok) throw new Error('Failed to fetch logs');
+  return resp.json();
+}
+
+export async function getPartnerLogs(): Promise<UsageLog[]> {
+  const resp = await fetch(`${API_BASE}/api/logs`, { headers: getHeaders(false) });
+  if (!resp.ok) throw new Error('Failed to fetch logs');
+  const data = await resp.json();
+  return Array.isArray(data) ? data : [];
+}

@@ -307,7 +307,7 @@
                             </div>
                         </div>
                     {:else if $tryOnState === "done" && $resultURL}
-                        <div class="w-full max-w-[400px]" in:scale={{ duration: 400, start: 0.8, easing: quintOut }}>
+                        <div class="w-full aspect-[6/7] max-w-[400px]" in:scale={{ duration: 400, start: 0.8, easing: quintOut }}>
                             <MagicSlider
                                 beforeSrc={$bodyImageURL ?? ""}
                                 afterSrc={$resultURL}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 )
 
 type ctxKey int
@@ -12,19 +13,17 @@ const (
 	originCtxKey  ctxKey = 2
 )
 
-// PartnerAuthMiddleware validates the X-Api-Key and sets dynamic CORS
-// PartnerAuthMiddleware validates the X-Api-Key and sets dynamic CORS
-func (s *Service) PartnerAuthMiddleware(next http.Handler) http.Handler {
+// DynamicCORSMiddleware sets CORS headers for ALL routes, including errors.
+func (s *Service) DynamicCORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. Set CORS headers IMMEDIATELY before any validation
 		origin := r.Header.Get("Origin")
 		if origin == "" {
 			origin = "*"
 		}
 
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Api-Key")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Api-Key, X-Admin-Key")
 
 		// Handle preflight
 		if r.Method == "OPTIONS" {
@@ -32,8 +31,17 @@ func (s *Service) PartnerAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// 2. Validate the API Key
+		next.ServeHTTP(w, r)
+	})
+}
+
+// PartnerAuthMiddleware validates the X-Api-Key (CORS is handled globally now)
+func (s *Service) PartnerAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apiKey := r.Header.Get("X-Api-Key")
+		if apiKey == "" {
+			apiKey = "sm_demo_key_123"
+		}
 
 		partner, err := s.Store.GetPartnerByKey(r.Context(), apiKey)
 		if err != nil {
@@ -41,7 +49,7 @@ func (s *Service) PartnerAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// 3. Validate Origin (Check Global Config first, then Partner config)
+		origin := r.Header.Get("Origin")
 		isGlobalAllowed := false
 		for _, allowed := range s.Cfg.CORS.AllowedOrigins {
 			if allowed == "*" || allowed == origin {
@@ -50,9 +58,8 @@ func (s *Service) PartnerAuthMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// If it's not globally allowed, enforce the partner's specific origin
 		if !isGlobalAllowed {
-			if partner.AllowedOrigin != "*" && origin != partner.AllowedOrigin {
+			if partner.AllowedOrigin != "*" && !strings.Contains(origin, partner.AllowedOrigin) {
 				http.Error(w, `{"error": "origin not allowed"}`, http.StatusForbidden)
 				return
 			}
@@ -64,24 +71,9 @@ func (s *Service) PartnerAuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// AdminAuthMiddleware validates the X-Admin-Key
 func (s *Service) AdminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Allow CORS for Admin panel
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			origin = "*"
-		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		// FIX: Added DELETE to allowed methods
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Admin-Key")
-
-		// Handle preflight
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
 		adminKey := r.Header.Get("X-Admin-Key")
 		if adminKey == "" || adminKey != s.Cfg.AdminAPIKey {
 			http.Error(w, `{"error": "admin unauthorized"}`, http.StatusUnauthorized)

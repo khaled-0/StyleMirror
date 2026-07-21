@@ -29,6 +29,13 @@ type PostgresStore struct {
 	pool *pgxpool.Pool
 }
 
+type UsageLog struct {
+	PartnerName string    `json:"partner_name"`
+	TaskID      string    `json:"task_id"`
+	TaskStatus  string    `json:"task_status"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 func NewPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, error) {
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -151,4 +158,55 @@ func (s *PostgresStore) GetTask(ctx context.Context, id string) (*Task, error) {
 func (s *PostgresStore) DeletePartner(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM partners WHERE id = $1`, id)
 	return err
+}
+
+func (s *PostgresStore) GetUsageLogs(ctx context.Context, limit int) ([]UsageLog, error) {
+	rows, err := s.pool.Query(ctx, `
+        SELECT p.name, u.task_id, COALESCE(t.status, 'unknown'), u.created_at
+        FROM usage_logs u
+        JOIN partners p ON u.partner_id = p.id
+        LEFT JOIN tasks t ON u.task_id = t.id
+        ORDER BY u.created_at DESC
+        LIMIT $1
+    `, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	logs := []UsageLog{}
+	for rows.Next() {
+		var l UsageLog
+		if err := rows.Scan(&l.PartnerName, &l.TaskID, &l.TaskStatus, &l.CreatedAt); err != nil {
+			continue
+		}
+		logs = append(logs, l)
+	}
+	return logs, nil
+}
+
+func (s *PostgresStore) GetPartnerUsageLogs(ctx context.Context, partnerID string, limit int) ([]UsageLog, error) {
+	rows, err := s.pool.Query(ctx, `
+        SELECT p.name, u.task_id, COALESCE(t.status, 'unknown'), u.created_at
+        FROM usage_logs u
+        JOIN partners p ON u.partner_id = p.id
+        LEFT JOIN tasks t ON u.task_id = t.id
+        WHERE u.partner_id = $1
+        ORDER BY u.created_at DESC
+        LIMIT $2
+    `, partnerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	logs := []UsageLog{}
+	for rows.Next() {
+		var l UsageLog
+		if err := rows.Scan(&l.PartnerName, &l.TaskID, &l.TaskStatus, &l.CreatedAt); err != nil {
+			continue
+		}
+		logs = append(logs, l)
+	}
+	return logs, nil
 }

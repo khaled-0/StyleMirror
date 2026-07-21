@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getUsage, logout } from '$lib/api';
+  import { getUsage, getPartnerLogs, logout } from '$lib/api';
 
   let isAuthed = false;
   let loading = true;
   let usage = { used_today: 0, limit: 0 };
+  let logs: UsageLog[] = [];
 
   let inputKey = '';
   let activeKey = '';
@@ -42,6 +43,7 @@
     errorMessage = '';
     try {
       usage = await getUsage();
+      logs = await getPartnerLogs();
     } catch (e: any) {
       const msg = e.message || 'Failed to fetch usage.';
       if (msg.includes('401') || msg.includes('403') || msg.includes('invalid api key') || msg.includes('origin not allowed')) {
@@ -158,5 +160,46 @@
         <p class="text-xs text-violet-300/40 mt-3">Add the <code>data-stylemirror="true"</code> attribute to any product image tag on your site. The overlay button will appear automatically.</p>
       </div>
     {/if}
+
+    <!-- Partner Activity Log -->
+    <div class="p-6 mirror-surface mt-8">
+      <h2 class="font-display text-xl font-700 mb-4">Your Recent Activity</h2>
+      {#if loading}
+        <div class="h-32 skeleton rounded-lg"></div>
+      {:else if !logs || logs.length === 0}
+        <p class="text-sm text-violet-300/40 text-center py-8">No activity yet. Generate a try-on to see logs here.</p>
+      {:else}
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="border-b border-white/10 text-xs uppercase tracking-wider text-violet-300/40">
+                <th class="py-3 pr-4">Task ID</th>
+                <th class="py-3 pr-4">Status</th>
+                <th class="py-3">Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each logs as log}
+                <tr class="border-b border-white/5 text-sm">
+                  <td class="py-3 pr-4 font-mono text-xs text-violet-300/60 truncate max-w-[150px]">{log.task_id}</td>
+                  <td class="py-3 pr-4">
+                    <span class="px-2 py-1 rounded-full text-xs font-semibold
+                      {log.task_status === 'succeeded' ? 'bg-green-500/10 text-green-300' : ''}
+                      {log.task_status === 'failed' ? 'bg-red-500/10 text-red-300' : ''}
+                      {log.task_status === 'running' || log.task_status === 'queued' ? 'bg-yellow-500/10 text-yellow-300' : ''}
+                    ">
+                      {log.task_status}
+                    </span>
+                  </td>
+                  <td class="py-3 text-xs text-violet-300/60">
+                    {new Date(log.created_at).toLocaleString()}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </div>
   </div>
 </section>

@@ -24,6 +24,7 @@ func loadConfig(path string) (*Config, error) {
 	if err := yaml.Unmarshal(b, &c); err != nil {
 		return nil, err
 	}
+
 	if k := os.Getenv("DASHSCOPE_API_KEY"); k != "" {
 		c.DashScope.APIKey = k
 	}
@@ -31,7 +32,7 @@ func loadConfig(path string) (*Config, error) {
 		c.DashScope.BaseURL = "https://dashscope-intl.aliyuncs.com"
 	}
 	if c.DashScope.Model == "" {
-		c.DashScope.Model = "qwen-image-edit"
+		c.DashScope.Model = "qwen-image-edit-plus"
 	}
 	if c.DashScope.Timeout == 0 {
 		c.DashScope.Timeout = 90 * time.Second
@@ -48,6 +49,13 @@ func loadConfig(path string) (*Config, error) {
 	if c.Limits.MaxUploadBytes == 0 {
 		c.Limits.MaxUploadBytes = 5 << 20
 	}
+
+	if k := os.Getenv("ADMIN_API_KEY"); k != "" {
+		c.AdminAPIKey = k
+	}
+	if c.AdminAPIKey == "" {
+		c.AdminAPIKey = "dev_admin_key"
+	}
 	return &c, nil
 }
 
@@ -61,12 +69,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if k := os.Getenv("ADMIN_API_KEY"); k != "" {
-		cfg.AdminAPIKey = k
-	}
-	if cfg.AdminAPIKey == "" {
-		cfg.AdminAPIKey = "dev_admin_key"
-	}
+	loadedConfig, _ := yaml.Marshal(cfg)
+	print(string(loadedConfig))
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
@@ -91,6 +95,7 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(120 * time.Second))
+	r.Use(svc.DynamicCORSMiddleware)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -103,6 +108,7 @@ func main() {
 		r.Post("/partners", svc.handleAdminCreatePartner)
 		r.Get("/partners", svc.handleAdminGetPartners)
 		r.Delete("/partners/{id}", svc.handleAdminDeletePartner)
+		r.Get("/logs", svc.handleAdminGetUsageLogs)
 	})
 
 	// Partner / Public Routes
@@ -112,6 +118,7 @@ func main() {
 		r.Post("/tryon", svc.handleSubmit)
 		r.Get("/tryon/{id}", svc.handleStatus)
 		r.Get("/usage", svc.handleUsage)
+		r.Get("/logs", svc.handlePartnerLogs)
 	})
 
 	srv := &http.Server{

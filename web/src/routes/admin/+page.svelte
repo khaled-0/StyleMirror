@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getAdminPartners, createPartner, deletePartner, logout, type PartnerUsage } from '$lib/api';
+  import { getAdminPartners, getUsageLogs, createPartner, deletePartner, logout, type PartnerUsage } from '$lib/api';
 
   let isAuthed = false;
   let loading = true;
   let partners: PartnerUsage[] = [];
+  let logs: UsageLog[] = [];
   let error = '';
 
   let inputAdminKey = '';
@@ -28,9 +29,10 @@
     loading = true; error = '';
     try {
       partners = await getAdminPartners();
+      logs = await getUsageLogs();
     } catch (e: any) {
       error = 'Failed to fetch. Session might be expired.';
-      handleLogout();
+      // handleLogout();
     } finally {
       loading = false;
     }
@@ -172,6 +174,51 @@
                 {/each}
               </div>
             {/if}
+          </div>
+
+          <!-- Recent Activity Log -->
+          <div class="md:col-span-3 mt-6">
+            <div class="p-6 mirror-surface">
+              <h2 class="font-display text-xl font-700 mb-4">Recent Activity Logs</h2>
+              {#if loading}
+                <div class="h-32 skeleton rounded-lg"></div>
+              {:else if !logs || logs.length === 0}
+                <p class="text-sm text-violet-300/40 text-center py-8">No activity yet.</p>
+              {:else}
+                <div class="overflow-x-auto">
+                  <table class="w-full text-left border-collapse">
+                    <thead>
+                      <tr class="border-b border-white/10 text-xs uppercase tracking-wider text-violet-300/40">
+                        <th class="py-3 pr-4">Partner</th>
+                        <th class="py-3 pr-4">Task ID</th>
+                        <th class="py-3 pr-4">Status</th>
+                        <th class="py-3">Timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each logs as log}
+                        <tr class="border-b border-white/5 text-sm">
+                          <td class="py-3 pr-4 font-medium">{log.partner_name}</td>
+                          <td class="py-3 pr-4 font-mono text-xs text-violet-300/60 truncate max-w-[150px]">{log.task_id}</td>
+                          <td class="py-3 pr-4">
+                            <span class="px-2 py-1 rounded-full text-xs font-semibold
+                              {log.task_status === 'succeeded' ? 'bg-green-500/10 text-green-300' : ''}
+                              {log.task_status === 'failed' ? 'bg-red-500/10 text-red-300' : ''}
+                              {log.task_status === 'running' || log.task_status === 'queued' ? 'bg-yellow-500/10 text-yellow-300' : ''}
+                            ">
+                              {log.task_status}
+                            </span>
+                          </td>
+                          <td class="py-3 text-xs text-violet-300/60">
+                            {new Date(log.created_at).toLocaleString()}
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              {/if}
+            </div>
           </div>
         </div>
       </div>
