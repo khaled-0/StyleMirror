@@ -10,6 +10,7 @@ services:
     environment:
       DATABASE_URL: "postgres://stylemirror:stylemirror@postgres:5432/stylemirror?sslmode=disable"
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+      DASHSCOPE_BASE_URL: ${DASHSCOPE_BASE_URL}
       ADMIN_API_KEY: ${ADMIN_API_KEY}
       DASHSCOPE_MODEL: ${DASHSCOPE_MODEL:-qwen-image-edit-plus-2025-12-15}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-10485760}
@@ -48,7 +49,7 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
     ports:
-      - "5173:3000"
+      - "3000:3000"
     environment:
       ORIGIN: http://localhost:5173
     depends_on:
