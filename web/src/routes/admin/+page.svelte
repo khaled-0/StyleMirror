@@ -32,7 +32,7 @@
       logs = await getUsageLogs();
     } catch (e: any) {
       error = 'Failed to fetch. Session might be expired.';
-      // handleLogout();
+      handleLogout();
     } finally {
       loading = false;
     }

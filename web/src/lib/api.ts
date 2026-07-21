@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 export function getHeaders(isAdmin: boolean = false): HeadersInit {
   const headers: Record<string, string> = {
@@ -30,8 +30,12 @@ export interface PartnerUsage {
 
 export async function getAdminPartners(): Promise<PartnerUsage[]> {
   const resp = await fetch(`${API_BASE}/api/admin/partners`, { headers: getHeaders(true) });
-  if (!resp.ok) throw new Error('Failed to fetch partners');
-  return resp.json();
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${resp.status}`);
+  }
+  const data = await resp.json();
+  return Array.isArray(data) ? data : [];
 }
 
 export async function createPartner(name: string, origin: string, limit: number): Promise<Partner> {

@@ -17,4 +17,3 @@ bin
 # Configs that shouldn't be baked into the image
 # (we pass these via environment variables or mount them)
 .env
-config.yaml

@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS usage_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     partner_id UUID REFERENCES partners(id) ON DELETE CASCADE,
-    task_id VARCHAR(32),
+    task_id UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

@@ -7,70 +7,110 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"gopkg.in/yaml.v3"
 )
 
-func loadConfig(path string) (*Config, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var c Config
-	if err := yaml.Unmarshal(b, &c); err != nil {
-		return nil, err
-	}
+func loadConfig() *Config {
+	c := &Config{}
 
-	if k := os.Getenv("DASHSCOPE_API_KEY"); k != "" {
-		c.DashScope.APIKey = k
-	}
-	if c.DashScope.BaseURL == "" {
-		c.DashScope.BaseURL = "https://dashscope-intl.aliyuncs.com"
-	}
-	if c.DashScope.Model == "" {
-		c.DashScope.Model = "qwen-image-edit-plus"
-	}
-	if c.DashScope.Timeout == 0 {
-		c.DashScope.Timeout = 90 * time.Second
-	}
-	if c.Server.Addr == "" {
-		c.Server.Addr = ":8080"
-	}
-	if c.Limits.RequestsPerHour == 0 {
-		c.Limits.RequestsPerHour = 20
-	}
-	if c.Limits.EstimatedSec == 0 {
-		c.Limits.EstimatedSec = 15
-	}
-	if c.Limits.MaxUploadBytes == 0 {
-		c.Limits.MaxUploadBytes = 5 << 20
-	}
+	// Server
+	c.Server.Addr = getenv("SERVER_ADDR", ":8080")
+	c.Server.ReadTimeout = getDurationEnv("SERVER_READ_TIMEOUT", 60*time.Second)
+	c.Server.IdleTimeout = getDurationEnv("SERVER_IDLE_TIMEOUT", 120*time.Second)
 
-	if k := os.Getenv("ADMIN_API_KEY"); k != "" {
-		c.AdminAPIKey = k
+	// Database
+	c.Database.URL = getenv("DATABASE_URL", "postgres://stylemirror:stylemirror@localhost:5432/stylemirror?sslmode=disable")
+
+	// DashScope
+	c.DashScope.APIKey = os.Getenv("DASHSCOPE_API_KEY") // Must be set
+	c.DashScope.BaseURL = getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com")
+	c.DashScope.Model = getenv("DASHSCOPE_MODEL", "qwen-image-edit-plus-2025-12-15")
+	c.DashScope.Timeout = getDurationEnv("DASHSCOPE_TIMEOUT", 90*time.Second)
+
+	// CORS (comma-separated list)
+	c.CORS.AllowedOrigins = getSliceEnv("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173", "http://localhost:4173"})
+
+	// Limits
+	c.Limits.MaxUploadBytes = getInt64Env("MAX_UPLOAD_BYTES", 10485760) // 10MB
+
+	// Admin
+	c.AdminAPIKey = getenv("ADMIN_API_KEY", "dev_admin_key")
+
+	return c
+}
+
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
-	if c.AdminAPIKey == "" {
-		c.AdminAPIKey = "dev_admin_key"
+	return fallback
+}
+
+func getDurationEnv(key string, fallback time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
 	}
-	return &c, nil
+	return fallback
+}
+
+func getInt64Env(key string, fallback int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		if i, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return i
+		}
+	}
+	return fallback
+}
+
+func getSliceEnv(key string, fallback []string) []string {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	// Simple comma-separated parser
+	var out []string
+	for _, s := range splitComma(v) {
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return fallback
+	}
+	return out
+}
+
+func splitComma(s string) []string {
+	// Basic split, can use strings.Split but keeping it simple here
+	var out []string
+	var current string
+	for _, r := range s {
+		if r == ',' {
+			out = append(out, current)
+			current = ""
+		} else {
+			current += string(r)
+		}
+	}
+	if current != "" {
+		out = append(out, current)
+	}
+	return out
 }
 
 func main() {
-	cfgPath := flag.String("config", "config.yaml", "path to config")
+	// Keep the flag just so `-config` doesn't break old run scripts, but ignore it
+	_ = flag.String("config", "", "ignored, config is loaded from env")
 	flag.Parse()
 
-	cfg, err := loadConfig(*cfgPath)
-	if err != nil {
-		slog.Error("config load failed", "err", err)
-		os.Exit(1)
-	}
-
-	loadedConfig, _ := yaml.Marshal(cfg)
-	print(string(loadedConfig))
+	cfg := loadConfig()
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
@@ -93,9 +133,9 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	r.Use(svc.DynamicCORSMiddleware)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(120 * time.Second))
-	r.Use(svc.DynamicCORSMiddleware)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -113,7 +153,6 @@ func main() {
 
 	// Partner / Public Routes
 	r.Route("/api", func(r chi.Router) {
-		// Custom middleware handles CORS and Auth
 		r.Use(svc.PartnerAuthMiddleware)
 		r.Post("/tryon", svc.handleSubmit)
 		r.Get("/tryon/{id}", svc.handleStatus)
