@@ -6,6 +6,8 @@
     apiBase: 'http://localhost:8080',
     imageSelector: null,       // e.g. 'img[data-nimg="1"]'
     excludeSelector: null,     // e.g. '.thumbnail-rail img'
+    apiKey: 'sm_demo_key_123',
+
   };
   const CONFIG = Object.assign({}, DEFAULTS,
     (typeof window.StyleMirrorConfig === 'object' && window.StyleMirrorConfig) || {});
@@ -550,7 +552,7 @@
     renderModalBody();
     try {
       const resp = await fetch(`${apiBase()}/api/tryon`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Client-Id': getClientId() },
+        method: 'POST', headers: { 'Content-Type': 'application/json',  'X-Api-Key': CONFIG.apiKey },
         body: JSON.stringify({ garment_url: garment.url, body_url: state.bodyURL }), signal: abortController.signal
       });
       if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.error || `HTTP ${resp.status}`); }
@@ -568,7 +570,7 @@
       if (!state.taskID) return;
       if (Date.now() - start > MAX_POLL_MS) { state.status = 'error'; state.error = 'Timed out.'; renderModalBody(); return; }
       try {
-        const resp = await fetch(`${apiBase()}/api/tryon/${state.taskID}`, { headers: { 'X-Client-Id': getClientId() }, signal: localAbort ? localAbort.signal : undefined });
+        const resp = await fetch(`${apiBase()}/api/tryon/${state.taskID}`, { headers: { 'X-Api-Id': getClientId() }, signal: localAbort ? localAbort.signal : undefined });
         const data = await resp.json();
         state.progress = Math.min(95, ((Date.now() - start) / 1000 / ESTIMATED_SEC) * 100);
         if (data.status === 'succeeded') { state.status = 'done'; state.resultURL = data.result_url; renderModalBody(); return; }

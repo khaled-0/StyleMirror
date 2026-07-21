@@ -3,10 +3,8 @@ server:
   read_timeout: 60s
   idle_timeout: 120s
 
-redis:
-  addr: "redis:6379"
-  password: ""
-  db: 0
+database:
+  url: "postgres://stylemirror:stylemirror@localhost:5432/stylemirror?sslmode=disable"
 
 dashscope:
   # Override at runtime with DASHSCOPE_API_KEY env var

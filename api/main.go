@@ -12,36 +12,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
 	"gopkg.in/yaml.v3"
 )
-
-type Config struct {
-	Server struct {
-		Addr        string        `yaml:"addr"`
-		ReadTimeout time.Duration `yaml:"read_timeout"`
-		IdleTimeout time.Duration `yaml:"idle_timeout"`
-	} `yaml:"server"`
-	Redis struct {
-		Addr     string `yaml:"addr"`
-		Password string `yaml:"password"`
-		DB       int    `yaml:"db"`
-	} `yaml:"redis"`
-	DashScope struct {
-		APIKey  string        `yaml:"api_key"`
-		BaseURL string        `yaml:"base_url"`
-		Model   string        `yaml:"model"`
-		Timeout time.Duration `yaml:"timeout"`
-	} `yaml:"dashscope"`
-	CORS struct {
-		AllowedOrigins []string `yaml:"allowed_origins"`
-	} `yaml:"cors"`
-	Limits struct {
-		RequestsPerHour int   `yaml:"requests_per_hour"`
-		EstimatedSec    int   `yaml:"estimated_seconds"`
-		MaxUploadBytes  int64 `yaml:"max_upload_bytes"`
-	} `yaml:"limits"`
-}
 
 func loadConfig(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
@@ -54,9 +26,6 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if k := os.Getenv("DASHSCOPE_API_KEY"); k != "" {
 		c.DashScope.APIKey = k
-	}
-	if a := os.Getenv("REDIS_ADDR"); a != "" {
-		c.Redis.Addr = a
 	}
 	if c.DashScope.BaseURL == "" {
 		c.DashScope.BaseURL = "https://dashscope-intl.aliyuncs.com"
@@ -92,16 +61,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	if k := os.Getenv("ADMIN_API_KEY"); k != "" {
+		cfg.AdminAPIKey = k
+	}
+	if cfg.AdminAPIKey == "" {
+		cfg.AdminAPIKey = "dev_admin_key"
+	}
+
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
-	store, err := NewRedisStore(cfg)
+	store, err := NewPostgresStore(context.Background(), cfg.Database.URL)
 	if err != nil {
-		slog.Error("redis connect failed", "err", err)
+		slog.Error("postgres connect failed", "err", err)
 		os.Exit(1)
 	}
 	defer store.Close()
 
-	// Extension point — no-op for v1. See preprocessor.go.
 	var preprocessor Preprocessor = &NoOpPreprocessor{}
 
 	svc := &Service{
@@ -116,22 +91,24 @@ func main() {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(120 * time.Second))
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   cfg.CORS.AllowedOrigins,
-		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Client-Id"},
-		ExposedHeaders:   []string{"X-Task-Id"},
-		AllowCredentials: false,
-		MaxAge:           300,
-	}))
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	// Admin Routes
+	r.Route("/api/admin", func(r chi.Router) {
+		r.Use(svc.AdminAuthMiddleware)
+		r.Post("/partners", svc.handleAdminCreatePartner)
+		r.Get("/partners", svc.handleAdminGetPartners)
+		r.Delete("/partners/{id}", svc.handleAdminDeletePartner)
+	})
+
+	// Partner / Public Routes
 	r.Route("/api", func(r chi.Router) {
-		r.Use(ClientIDMiddleware)
+		// Custom middleware handles CORS and Auth
+		r.Use(svc.PartnerAuthMiddleware)
 		r.Post("/tryon", svc.handleSubmit)
 		r.Get("/tryon/{id}", svc.handleStatus)
 		r.Get("/usage", svc.handleUsage)

@@ -12,15 +12,13 @@ const (
 )
 
 type Task struct {
-	ID           string     `json:"id"`
-	Status       TaskStatus `json:"status"`
-	GarmentURL   string     `json:"garment_url,omitempty"`
-	BodyURL      string     `json:"body_url,omitempty"`
-	ResultURL    string     `json:"result_url,omitempty"`
-	Error        string     `json:"error,omitempty"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	EstimatedSec int        `json:"estimated_sec,omitempty"`
+	ID        string     `json:"id"`
+	PartnerID string     `json:"partner_id,omitempty"`
+	Status    TaskStatus `json:"status"`
+	ResultURL string     `json:"result_url,omitempty"`
+	Error     string     `json:"error,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 type SubmitRequest struct {
@@ -30,26 +28,43 @@ type SubmitRequest struct {
 }
 
 type SubmitResponse struct {
-	TaskID       string `json:"task_id"`
-	Status       string `json:"status"`
-	EstimatedSec int    `json:"estimated_sec"`
-}
-
-type StatusResponse struct {
-	Task        `json:",inline"`
-	PollAfterMs int `json:"poll_after_ms"`
+	TaskID string `json:"task_id"`
+	Status string `json:"status"`
 }
 
 type UsageResponse struct {
-	ClientID    string `json:"client_id"`
-	Used        int    `json:"used"`
-	Limit       int    `json:"limit"`
-	WindowSec   int    `json:"window_sec"`
-	ResetAtUnix int64  `json:"reset_at_unix"`
+	UsedToday int `json:"used_today"`
+	Limit     int `json:"limit"`
 }
 
-type UploadResponse struct {
-	URL       string `json:"url"`
-	SizeBytes int64  `json:"size_bytes"`
-	ExpiresIn int    `json:"expires_in_sec"`
+type CreatePartnerRequest struct {
+	Name          string `json:"name"`
+	AllowedOrigin string `json:"allowed_origin"`
+	DailyLimit    int    `json:"daily_limit"`
+}
+
+type Config struct {
+	Server struct {
+		Addr        string        `yaml:"addr"`
+		ReadTimeout time.Duration `yaml:"read_timeout"`
+		IdleTimeout time.Duration `yaml:"idle_timeout"`
+	} `yaml:"server"`
+	Database struct {
+		URL string `yaml:"url"`
+	} `yaml:"database"`
+	DashScope struct {
+		APIKey  string        `yaml:"api_key"`
+		BaseURL string        `yaml:"base_url"`
+		Model   string        `yaml:"model"`
+		Timeout time.Duration `yaml:"timeout"`
+	} `yaml:"dashscope"`
+	CORS struct {
+		AllowedOrigins []string `yaml:"allowed_origins"`
+	} `yaml:"cors"`
+	Limits struct {
+		RequestsPerHour int   `yaml:"requests_per_hour"`
+		EstimatedSec    int   `yaml:"estimated_seconds"`
+		MaxUploadBytes  int64 `yaml:"max_upload_bytes"`
+	} `yaml:"limits"`
+	AdminAPIKey string `yaml:"admin_api_key"`
 }

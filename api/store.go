@@ -2,89 +2,153 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type RedisStore struct {
-	rdb *redis.Client
+type Partner struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	APIKey        string    `json:"api_key,omitempty"`
+	AllowedOrigin string    `json:"allowed_origin"`
+	DailyLimit    int       `json:"daily_limit"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
-const (
-	tasksPrefix  = "sm:task:"
-	usagePrefix  = "sm:usage:"
-	uploadPrefix = "sm:upload:"
-	taskTTL      = 30 * time.Minute
-	uploadTTL    = 10 * time.Minute
-)
+type PartnerUsage struct {
+	Partner   Partner `json:"partner"`
+	UsedToday int     `json:"used_today"`
+}
 
-func NewRedisStore(cfg *Config) (*RedisStore, error) {
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.Redis.Addr,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	})
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	if err := rdb.Ping(ctx).Err(); err != nil {
+type PostgresStore struct {
+	pool *pgxpool.Pool
+}
+
+func NewPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, error) {
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("unable to connect to database: %w", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		return nil, fmt.Errorf("unable to ping database: %w", err)
+	}
+	return &PostgresStore{pool: pool}, nil
+}
+
+func (s *PostgresStore) Close() {
+	s.pool.Close()
+}
+
+func generateAPIKey() string {
+	b := make([]byte, 24)
+	_, _ = rand.Read(b)
+	return "sm_live_" + hex.EncodeToString(b)
+}
+
+// --- Partner Management ---
+func (s *PostgresStore) CreatePartner(ctx context.Context, name, origin string, dailyLimit int) (*Partner, error) {
+	p := &Partner{
+		APIKey:        generateAPIKey(),
+		Name:          name,
+		AllowedOrigin: origin,
+		DailyLimit:    dailyLimit,
+	}
+	err := s.pool.QueryRow(ctx,
+		`INSERT INTO partners (name, api_key, allowed_origin, daily_limit) VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+		p.Name, p.APIKey, p.AllowedOrigin, p.DailyLimit,
+	).Scan(&p.ID, &p.CreatedAt)
+	if err != nil {
 		return nil, err
 	}
-	return &RedisStore{rdb: rdb}, nil
+	return p, nil
 }
 
-func (s *RedisStore) Close() error { return s.rdb.Close() }
-
-func (s *RedisStore) SaveTask(ctx context.Context, t *Task) error {
-	t.UpdatedAt = time.Now()
-	b, err := json.Marshal(t)
+func (s *PostgresStore) GetPartnerByKey(ctx context.Context, apiKey string) (*Partner, error) {
+	p := &Partner{}
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, name, api_key, allowed_origin, daily_limit, created_at FROM partners WHERE api_key = $1`,
+		apiKey,
+	).Scan(&p.ID, &p.Name, &p.APIKey, &p.AllowedOrigin, &p.DailyLimit, &p.CreatedAt)
 	if err != nil {
-		return err
+		return nil, errors.New("partner not found")
 	}
-	return s.rdb.Set(ctx, tasksPrefix+t.ID, b, taskTTL).Err()
+	return p, nil
 }
 
-func (s *RedisStore) GetTask(ctx context.Context, id string) (*Task, error) {
-	b, err := s.rdb.Get(ctx, tasksPrefix+id).Bytes()
-	if errors.Is(err, redis.Nil) {
-		return nil, nil
-	}
+func (s *PostgresStore) GetAllPartners(ctx context.Context) ([]PartnerUsage, error) {
+	rows, err := s.pool.Query(ctx, `
+        SELECT p.id, p.name, p.allowed_origin, p.daily_limit, p.created_at,
+               COUNT(u.id) as usage_count
+        FROM partners p
+        LEFT JOIN usage_logs u ON p.id = u.partner_id AND u.created_at > NOW() - INTERVAL '24 hours'
+        GROUP BY p.id
+        ORDER BY p.created_at DESC
+    `)
 	if err != nil {
 		return nil, err
 	}
-	var t Task
-	if err := json.Unmarshal(b, &t); err != nil {
-		return nil, err
+	defer rows.Close()
+
+	var stats []PartnerUsage
+	for rows.Next() {
+		var p Partner
+		var u int
+		if err := rows.Scan(&p.ID, &p.Name, &p.AllowedOrigin, &p.DailyLimit, &p.CreatedAt, &u); err != nil {
+			continue
+		}
+		stats = append(stats, PartnerUsage{Partner: p, UsedToday: u})
 	}
-	return &t, nil
+	return stats, nil
 }
 
-func (s *RedisStore) IncrementUsage(ctx context.Context, clientID string, window time.Duration) (int, error) {
-	key := usagePrefix + clientID
-	n, err := s.rdb.Incr(ctx, key).Result()
-	if err != nil {
-		return 0, err
-	}
-	if n == 1 {
-		_ = s.rdb.Expire(ctx, key, window).Err()
-	}
-	return int(n), nil
-}
-
-func (s *RedisStore) Usage(ctx context.Context, clientID string) (count int, ttl time.Duration, err error) {
-	key := usagePrefix + clientID
-	c, err := s.rdb.Get(ctx, key).Int()
-	if errors.Is(err, redis.Nil) {
-		return 0, 0, nil
-	}
+// --- Usage & Tasks ---
+func (s *PostgresStore) GetPartnerUsage(ctx context.Context, partnerID string) (int, int, error) {
+	var usedToday int
+	var limit int
+	err := s.pool.QueryRow(ctx, `
+        SELECT COUNT(u.id), p.daily_limit
+        FROM partners p
+        LEFT JOIN usage_logs u ON p.id = u.partner_id AND u.created_at > NOW() - INTERVAL '24 hours'
+        WHERE p.id = $1
+        GROUP BY p.daily_limit
+    `, partnerID).Scan(&usedToday, &limit)
 	if err != nil {
 		return 0, 0, err
 	}
-	t, err := s.rdb.TTL(ctx, key).Result()
-	if err != nil || t < 0 {
-		return c, 0, nil
+	return usedToday, limit, nil
+}
+
+func (s *PostgresStore) LogUsage(ctx context.Context, partnerID, taskID string) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO usage_logs (partner_id, task_id) VALUES ($1, $2)`, partnerID, taskID)
+	return err
+}
+
+func (s *PostgresStore) SaveTask(ctx context.Context, t *Task) error {
+	t.UpdatedAt = time.Now()
+	_, err := s.pool.Exec(ctx, `
+        INSERT INTO tasks (id, partner_id, status, result_url, error, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (id) DO UPDATE SET status = $3, result_url = $4, error = $5
+    `, t.ID, t.PartnerID, t.Status, t.ResultURL, t.Error, t.CreatedAt)
+	return err
+}
+
+func (s *PostgresStore) GetTask(ctx context.Context, id string) (*Task, error) {
+	t := &Task{}
+	err := s.pool.QueryRow(ctx, `SELECT id, partner_id, status, result_url, error, created_at FROM tasks WHERE id = $1`, id).
+		Scan(&t.ID, &t.PartnerID, &t.Status, &t.ResultURL, &t.Error, &t.CreatedAt)
+	if err != nil {
+		return nil, errors.New("task not found")
 	}
-	return c, t, nil
+	return t, nil
+}
+
+func (s *PostgresStore) DeletePartner(ctx context.Context, id string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM partners WHERE id = $1`, id)
+	return err
 }

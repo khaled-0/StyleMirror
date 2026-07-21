@@ -39,41 +39,41 @@ By leveraging Qwen Team's `qwen-image-edit` model via a single synchronous HTTPS
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/stylemirror.git
-   cd stylemirror
+   git clone https://github.com/khaled-0/StyleMirror.git
+   cd StyleMirror
    ```
 
-
 2. **Configure environment:**
-
    ```bash
    cp .env.example .env
-   # Edit .env and add your DASHSCOPE_API_KEY
+   # Edit .env to add your DASHSCOPE_API_KEY and an ADMIN_API_KEY of your choice
    ```
 
 3. **Run the stack:**
-
    ```bash
    docker compose up --build
    ```
+   *This will automatically start Postgres, initialize the database schema, start the Go API, and serve the SvelteKit frontend.*
 
 4. **Access the app:**
    Open `http://localhost:5173` in your browser.
 
 ### Option B: Local Development
 
-1. **Start Redis:**
-
+1. **Start Postgres:**
    ```bash
-   docker run -p 6379:6379 redis:7-alpine
+   docker run --name stylemirror-db -e POSTGRES_USER=stylemirror -e POSTGRES_PASSWORD=stylemirror -e POSTGRES_DB=stylemirror -p 5432:5432 -d postgres:16-alpine
+   psql -h localhost -U stylemirror -d stylemirror -f db/init.sql
    ```
 
 2. **Start Go API:**
-
    ```bash
    cd api
-   export DASHSCOPE_API_KEY=sk-your-key-here
-   export REDIS_ADDR=localhost:6379
+   go get github.com/jackc/pgx/v5
+   go mod tidy
+   export DATABASE_URL="postgres://stylemirror:stylemirror@localhost:5432/stylemirror?sslmode=disable"
+   export DASHSCOPE_API_KEY="sk-your-key-here"
+   export ADMIN_API_KEY="admin_super_secret_key"
    go run . -config config.yaml
    ```
 
@@ -87,6 +87,17 @@ By leveraging Qwen Team's `qwen-image-edit` model via a single synchronous HTTPS
 
 ---
 
+## 🔑 Admin & Partner Panels
+
+1. Navigate to `http://localhost:5173/admin`.
+2. Enter the `ADMIN_API_KEY` you set in your `.env` file.
+3. Create a new Partner (set their name, allowed domain origin, and daily request limit).
+4. The Admin panel will output a unique API key (e.g., `sm_live_...`). 
+5. As a partner, go to `http://localhost:5173/dashboard`, paste that API key, and you can view your usage limits and the integration snippet.
+
+*(A default demo partner with the key `sm_demo_key_123` is created automatically by `db/init.sql` for testing the landing page).*
+
+---
 🧪 Testing the Userscript
 
 Ensure the SvelteKit frontend is running (npm run dev).
@@ -121,6 +132,8 @@ Delete the template and paste the StyleMirror Loader script:
     // Skip thumbnail rails / swatches / recommendation carousels so the
     // "Try It On" button only shows up on the real product shot.
     excludeSelector: '.w-5, img[alt="GooglePlay"], img[alt="AppStore"]'
+
+    apiKey: "<your api key>"
   };
 
   // 2) Load the widget dynamically from the dev server.

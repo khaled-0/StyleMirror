@@ -20,46 +20,55 @@
     import MagicSlider from "./MagicSlider.svelte";
     import SkeletonFrame from "./SkeletonFrame.svelte";
 
-    // Default Garments - cleaner catalog-style clothing images
+    // Trending Garments - modern fashion catalog
     export let garments = [
       {
-        url: "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=600",
-        name: "Classic White Shirt"
+        url: "https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=600",
+        name: "Oversized Luxury Blazer"
       },
       {
-        url: "https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?w=600",
-        name: "Blue Denim Jacket"
+        url: "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=600",
+        name: "Elegant Satin Slip Dress"
       },
       {
-        url: "https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=600",
-        name: "Elegant Summer Dress"
+        url: "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=600",
+        name: "Minimal Tailored Shirt"
       }
     ];
 
 
-    // Suggested Garments - better variety for AI try-on
+    // Trending AI Try-On Collection
     const suggestedGarments = [
       {
-        url: "https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=400",
-        name: "Casual Street Jacket"
+        url: "https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=400",
+        name: "Soft Luxury Knit Sweater"
       },
       {
-        url: "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400",
-        name: "Cream Knit Sweater"
+        url: "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=400",
+        name: "Contemporary Casual Look"
+      },
+      {
+        url: "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400",
+        name: "Classic Camel Coat"
+      },
+      {
+        url: "https://images.unsplash.com/photo-1485968579580-b6d095142e6e?w=400",
+        name: "Minimal Trench Coat"
       },
       {
         url: "https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=400",
-        name: "Silk Blouse"
-      },
-      {
-        url: "https://images.unsplash.com/photo-1485230895905-ec40ba36b9bc?w=400",
-        name: "Urban Hoodie"
+        name: "Luxury Black Evening Dress"
       },
       {
         url: "https://images.unsplash.com/photo-1503341504253-dff4815485f1?w=400",
-        name: "Denim Overshirt"
+        name: "Utility Overshirt Jacket"
+      },
+      {
+        url: "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400",
+        name: "Cream Cable Knit Sweater"
       }
     ];
+
 
     let selectedGarment = 0;
     let showWebcam = false;

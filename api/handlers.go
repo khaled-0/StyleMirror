@@ -11,155 +11,144 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type Service struct {
 	Cfg          *Config
-	Store        *RedisStore
+	Store        *PostgresStore
 	DashScope    *DashScopeClient
 	Preprocessor Preprocessor
 }
 
-func (s *Service) handleSubmit(w http.ResponseWriter, r *http.Request) {
-	cid := clientIDFromCtx(r.Context())
-
-	count, _, err := s.Store.Usage(r.Context(), cid)
-	if err != nil {
-		slog.Warn("usage lookup failed", "err", err)
+func (s *Service) handleAdminCreatePartner(w http.ResponseWriter, r *http.Request) {
+	var req CreatePartnerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
 	}
-	if count >= s.Cfg.Limits.RequestsPerHour {
-		writeJSON(w, http.StatusTooManyRequests, map[string]any{
-			"error":           "rate limit exceeded",
-			"retry_after_sec": 3600,
-		})
+	if req.DailyLimit == 0 {
+		req.DailyLimit = 20
+	}
+	p, err := s.Store.CreatePartner(r.Context(), req.Name, req.AllowedOrigin, req.DailyLimit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create partner"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, p)
+}
+
+func (s *Service) handleAdminGetPartners(w http.ResponseWriter, r *http.Request) {
+	partners, err := s.Store.GetAllPartners(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, partners)
+}
+
+func (s *Service) handleSubmit(w http.ResponseWriter, r *http.Request) {
+	partner := partnerFromCtx(r.Context())
+	if partner == nil {
+		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	used, limit, err := s.Store.GetPartnerUsage(r.Context(), partner.ID)
+	if err == nil && used >= limit {
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "daily limit exceeded"})
 		return
 	}
 
 	var req SubmitRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, s.Cfg.Limits.MaxUploadBytes)).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json: " + err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json or payload too large"})
 		return
 	}
 	if err := validateImageRef(req.GarmentURL); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "garment_url: " + err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "garment_url: " + err.Error()})
 		return
 	}
 	if err := validateImageRef(req.BodyURL); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "body_url: " + err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body_url: " + err.Error()})
 		return
 	}
 
-	id := newTaskID()
+	id := uuid.New().String()
 	task := &Task{
-		ID:           id,
-		Status:       StatusQueued,
-		GarmentURL:   req.GarmentURL,
-		BodyURL:      req.BodyURL,
-		CreatedAt:    time.Now(),
-		EstimatedSec: s.Cfg.Limits.EstimatedSec,
+		ID:        id,
+		PartnerID: partner.ID,
+		Status:    StatusQueued,
+		CreatedAt: time.Now(),
 	}
 	if err := s.Store.SaveTask(r.Context(), task); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "store failed"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "store failed"})
 		return
 	}
 
-	if _, err := s.Store.IncrementUsage(r.Context(), cid, time.Hour); err != nil {
-		slog.Warn("usage increment failed", "err", err)
-	}
+	_ = s.Store.LogUsage(r.Context(), partner.ID, id)
+	go s.runTask(partner.ID, id, req)
 
-	go s.runTask(id, req)
-
-	writeJSON(w, http.StatusAccepted, SubmitResponse{
-		TaskID:       id,
-		Status:       string(StatusQueued),
-		EstimatedSec: s.Cfg.Limits.EstimatedSec,
-	})
+	writeJSON(w, http.StatusAccepted, SubmitResponse{TaskID: id, Status: string(StatusQueued)})
 }
 
-func (s *Service) runTask(id string, req SubmitRequest) {
+func (s *Service) runTask(partnerID, id string, req SubmitRequest) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.Cfg.DashScope.Timeout+15*time.Second)
 	defer cancel()
 
-	running := &Task{
-		ID: id, Status: StatusRunning, EstimatedSec: s.Cfg.Limits.EstimatedSec,
-		GarmentURL: req.GarmentURL, BodyURL: req.BodyURL, CreatedAt: time.Now(),
-	}
-	if err := s.Store.SaveTask(ctx, running); err != nil {
-		slog.Error("save running task failed", "id", id, "err", err)
-		return
-	}
+	running := &Task{ID: id, PartnerID: partnerID, Status: StatusRunning}
+	_ = s.Store.SaveTask(ctx, running)
 
-	// --- Extension point ---
 	garmentURL, bodyURL, _, err := s.Preprocessor.Preprocess(ctx, req.GarmentURL, req.BodyURL)
 	if err != nil {
-		s.failTask(ctx, id, "preprocessor: "+err.Error())
+		s.failTask(ctx, partnerID, id, "preprocessor: "+err.Error())
 		return
 	}
 
 	resultURL, err := s.DashScope.Edit(ctx, garmentURL, bodyURL, req.GarmentPrompt)
 	if err != nil {
-		s.failTask(ctx, id, "dashscope: "+err.Error())
+		s.failTask(ctx, partnerID, id, "dashscope: "+err.Error())
 		return
 	}
 
-	done := &Task{
-		ID: id, Status: StatusSucceeded, ResultURL: resultURL,
-		GarmentURL: req.GarmentURL, BodyURL: req.BodyURL,
-		EstimatedSec: s.Cfg.Limits.EstimatedSec, CreatedAt: time.Now(),
-	}
-	if err := s.Store.SaveTask(ctx, done); err != nil {
-		slog.Error("save done task failed", "id", id, "err", err)
-	}
+	done := &Task{ID: id, PartnerID: partnerID, Status: StatusSucceeded, ResultURL: resultURL}
+	_ = s.Store.SaveTask(ctx, done)
 }
 
-func (s *Service) failTask(ctx context.Context, id, msg string) {
+func (s *Service) failTask(ctx context.Context, partnerID, id, msg string) {
 	slog.Warn("task failed", "id", id, "err", msg)
-	t := &Task{ID: id, Status: StatusFailed, Error: msg, CreatedAt: time.Now()}
+	t := &Task{ID: id, PartnerID: partnerID, Status: StatusFailed, Error: msg}
 	_ = s.Store.SaveTask(ctx, t)
 }
 
 func (s *Service) handleStatus(w http.ResponseWriter, r *http.Request) {
+	partner := partnerFromCtx(r.Context())
 	id := chi.URLParam(r, "id")
-	if id == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing id"})
-		return
-	}
+
 	t, err := s.Store.GetTask(r.Context(), id)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "store error"})
+	if err != nil || t.PartnerID != partner.ID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
 		return
 	}
-	if t == nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "task not found"})
-		return
-	}
-	pollAfter := 1500
-	if t.Status == StatusSucceeded || t.Status == StatusFailed {
-		pollAfter = 0
-	}
-	writeJSON(w, http.StatusOK, StatusResponse{Task: *t, PollAfterMs: pollAfter})
+	writeJSON(w, http.StatusOK, t)
 }
 
 func (s *Service) handleUsage(w http.ResponseWriter, r *http.Request) {
-	cid := clientIDFromCtx(r.Context())
-	count, ttl, err := s.Store.Usage(r.Context(), cid)
+	partner := partnerFromCtx(r.Context())
+	used, limit, err := s.Store.GetPartnerUsage(r.Context(), partner.ID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "store error"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "db error"})
 		return
 	}
-	if ttl < 0 {
-		ttl = 0
-	}
-	writeJSON(w, http.StatusOK, UsageResponse{
-		ClientID: cid, Used: count, Limit: s.Cfg.Limits.RequestsPerHour,
-		WindowSec: 3600, ResetAtUnix: time.Now().Add(ttl).Unix(),
-	})
+	writeJSON(w, http.StatusOK, UsageResponse{UsedToday: used, Limit: limit})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(v)
 }
 
 func validateImageRef(s string) error {
@@ -167,7 +156,7 @@ func validateImageRef(s string) error {
 		return errors.New("required")
 	}
 	if strings.HasPrefix(s, "data:image/") {
-		return nil // data URI — accepted as-is
+		return nil
 	}
 	u, err := url.Parse(s)
 	if err != nil {
@@ -180,4 +169,19 @@ func validateImageRef(s string) error {
 		return errors.New("missing host")
 	}
 	return nil
+}
+
+func (s *Service) handleAdminDeletePartner(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing id"})
+		return
+	}
+
+	if err := s.Store.DeletePartner(r.Context(), id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete partner"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }

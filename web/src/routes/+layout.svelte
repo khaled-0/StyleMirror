@@ -12,7 +12,8 @@
     <div class="flex items-center gap-6 text-sm">
       <a href="/demo" class="hover:text-violet-300 transition-colors {$page.url.pathname === '/demo' ? 'text-violet-300' : ''}">Demo</a>
       <a href="/dashboard" class="hover:text-violet-300 transition-colors {$page.url.pathname === '/dashboard' ? 'text-violet-300' : ''}">Dashboard</a>
-      <a href="https://github.com" class="px-4 py-1.5 rounded-lg border border-white/10 hover:border-violet-400/50 transition-colors">GitHub</a>
+      <a href="/admin" class="hover:text-violet-300 transition-colors {$page.url.pathname === '/admin' ? 'text-violet-300' : ''}">Admin</a>
+      <a href="https://github.com/khaled-0/StyleMirror" class="px-4 py-1.5 rounded-lg border border-white/10 hover:border-violet-400/50 transition-colors">GitHub</a>
     </div>
   </div>
 </nav>
